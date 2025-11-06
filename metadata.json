@@ -1,0 +1,5 @@
+{
+  "name": "FinTrack",
+  "description": "A responsive web and mobile application for personal finance control, focusing on managing multiple current accounts and expense tracking.",
+  "requestFramePermissions": []
+}
