@@ -2,22 +2,25 @@ import React, { useContext, useMemo } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { Transaction } from '../../types';
 import Card from '../common/Card';
-import { TrashIcon, PencilIcon } from '@heroicons/react/24/solid';
+import { TrashIcon, PencilIcon, CreditCardIcon } from '@heroicons/react/24/solid';
 
 
 const TransactionItem: React.FC<{ 
-    transaction: Transaction & { accountName: string }; 
+    transaction: Transaction & { sourceName: string }; 
     onDelete: (id: string) => void; 
     onEdit: (transaction: Transaction) => void;
-// FIX: Removed `accountName` from destructuring. It's not a top-level prop.
 }> = ({ transaction, onDelete, onEdit }) => {
     const isIncome = transaction.type === 'income';
+    const isCreditCard = transaction.type === 'creditCardExpense';
+    
     return (
         <li className="flex items-center justify-between py-3">
-            <div className="flex-1 min-w-0">
-                <p className="font-medium text-gray-800 dark:text-gray-100 truncate">{transaction.description}</p>
-                {/* FIX: Used `transaction.accountName` as `accountName` is a property of the transaction object. */}
-                <p className="text-sm text-gray-500 dark:text-gray-400">{transaction.accountName} - {transaction.category}</p>
+            <div className="flex-1 min-w-0 flex items-center">
+                 {isCreditCard && <CreditCardIcon className="h-5 w-5 mr-3 text-gray-400 flex-shrink-0" />}
+                <div>
+                    <p className="font-medium text-gray-800 dark:text-gray-100 truncate">{transaction.description}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{transaction.sourceName} - {transaction.category}</p>
+                </div>
             </div>
             <div className="text-right ml-2">
                  <p className={`font-semibold ${isIncome ? 'text-success-600 dark:text-success-500' : 'text-danger-500'}`}>
@@ -43,15 +46,22 @@ interface TransactionListProps {
 }
 
 const TransactionList: React.FC<TransactionListProps> = ({ onEditTransaction }) => {
-  const { transactions, accounts, dispatch } = useContext(AppContext);
+  const { transactions, accounts, creditCards, dispatch } = useContext(AppContext);
 
   const enrichedTransactions = useMemo(() => {
     const accountMap = new Map(accounts.map(acc => [acc.id, acc.bankName]));
-    return transactions.map(tx => ({
-        ...tx,
-        accountName: accountMap.get(tx.accountId) || 'Conta Desconhecida'
-    }))
-  }, [transactions, accounts])
+    const cardMap = new Map(creditCards.map(card => [card.id, card.name]));
+
+    return transactions.map(tx => {
+        let sourceName = 'N/A';
+        if (tx.type === 'creditCardExpense') {
+            sourceName = cardMap.get(tx.creditCardId || '') || 'Cartão Desconhecido';
+        } else if (tx.accountId) {
+            sourceName = accountMap.get(tx.accountId) || 'Conta Desconhecida';
+        }
+      return { ...tx, sourceName };
+    })
+  }, [transactions, accounts, creditCards])
 
   const groupedTransactions = useMemo(() => {
     return enrichedTransactions.reduce((acc, tx) => {
@@ -61,7 +71,7 @@ const TransactionList: React.FC<TransactionListProps> = ({ onEditTransaction }) 
       }
       acc[date].push(tx);
       return acc;
-    }, {} as Record<string, (Transaction & { accountName: string })[]>);
+    }, {} as Record<string, (Transaction & { sourceName: string })[]>);
   }, [enrichedTransactions]);
 
   const sortedDates = Object.keys(groupedTransactions).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());

@@ -2,6 +2,7 @@ import React, { useContext } from 'react';
 import { AppContext } from '../../context/AppContext';
 import AccountManager from './AccountManager';
 import CategoryManager from './CategoryManager';
+import CreditCardManager from './CreditCardManager';
 import { SunIcon, MoonIcon, ArrowRightOnRectangleIcon } from '@heroicons/react/24/solid';
 
 const Settings: React.FC = () => {
@@ -22,6 +23,8 @@ const Settings: React.FC = () => {
       </header>
 
       <AccountManager />
+
+      <CreditCardManager />
 
       <CategoryManager />
       

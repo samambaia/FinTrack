@@ -6,6 +6,7 @@ import Modal from '../common/Modal';
 import AddTransactionForm from '../transactions/AddTransactionForm';
 import { PlusIcon } from '@heroicons/react/24/solid';
 import { Transaction } from '../../types';
+import CreditCardSummary from './CreditCardSummary';
 
 const Dashboard: React.FC = () => {
   const { accounts, transactions } = useContext(AppContext);
@@ -47,7 +48,7 @@ const Dashboard: React.FC = () => {
           <p className="text-gray-500 dark:text-gray-400">Bem-vindo(a) de volta!</p>
         </div>
         <div className="text-right">
-             <p className="text-sm text-gray-500 dark:text-gray-400">Saldo Total</p>
+             <p className="text-sm text-gray-500 dark:text-gray-400">Saldo Total em Contas</p>
              <p className={`text-2xl font-bold ${totalBalance >= 0 ? 'text-success-600 dark:text-success-400' : 'text-danger-500 dark:text-danger-400'}`}>
                 {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalBalance)}
             </p>
@@ -66,6 +67,8 @@ const Dashboard: React.FC = () => {
             <p className="text-gray-500 dark:text-gray-400 text-center py-4">Nenhuma conta ativa. Vá para Ajustes para adicionar uma.</p>
         )}
       </div>
+
+      <CreditCardSummary />
 
       <TransactionList onEditTransaction={handleOpenEditModal} />
 

@@ -1,7 +1,8 @@
-import { Account, Transaction, User, Theme, Category } from '../types';
+import { Account, Transaction, User, Theme, Category, CreditCard } from '../types';
 
-interface AppState {
+export interface AppState {
   accounts: Account[];
+  creditCards: CreditCard[];
   transactions: Transaction[];
   categories: Category[];
   auth: {
@@ -12,12 +13,17 @@ interface AppState {
 }
 
 export type AppAction =
+  | { type: 'HYDRATE_STATE'; payload: AppState }
   | { type: 'LOGIN'; payload: User }
   | { type: 'LOGOUT' }
   | { type: 'TOGGLE_THEME' }
   | { type: 'ADD_ACCOUNT'; payload: Account }
   | { type: 'UPDATE_ACCOUNT'; payload: Account }
   | { type: 'DELETE_ACCOUNT'; payload: string } // id
+  | { type: 'ADD_CREDIT_CARD'; payload: CreditCard }
+  | { type: 'UPDATE_CREDIT_CARD'; payload: CreditCard }
+  | { type: 'DELETE_CREDIT_CARD'; payload: string } // id
+  | { type: 'PAY_INVOICE', payload: { creditCardId: string, accountId: string, amount: number, date: string }}
   | { type: 'ADD_TRANSACTION'; payload: Transaction }
   | { type: 'UPDATE_TRANSACTION'; payload: Transaction }
   | { type: 'DELETE_TRANSACTION'; payload: string } // id
@@ -28,6 +34,7 @@ export type AppAction =
 
 export const initialState: AppState = {
   accounts: [],
+  creditCards: [],
   transactions: [],
   categories: [
     { id: 'cat-income-1', name: 'Salário', type: 'income', isDefault: true },
@@ -40,6 +47,7 @@ export const initialState: AppState = {
     { id: 'cat-expense-4', name: 'Lazer', type: 'expense', isDefault: true },
     { id: 'cat-expense-5', name: 'Saúde', type: 'expense', isDefault: true },
     { id: 'cat-expense-6', name: 'Educação', type: 'expense', isDefault: true },
+    { id: 'cat-expense-7', name: 'Pagamento de Fatura', type: 'expense', isDefault: true },
     { id: 'cat-expense-99', name: 'Outras Despesas', type: 'expense', isDefault: true },
   ],
   auth: {
@@ -51,15 +59,14 @@ export const initialState: AppState = {
 
 export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
+    case 'HYDRATE_STATE':
+      return action.payload;
     case 'LOGIN':
       return {
         ...state,
         auth: { isAuthenticated: true, user: action.payload },
       };
     case 'LOGOUT':
-      // FIX: Logout now correctly resets state without a forced page reload,
-      // which was causing navigation errors. The app will react to the state
-      // change and display the login screen.
       localStorage.removeItem('finTrackState');
       return {
         ...initialState,
@@ -87,6 +94,52 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         ...state,
         accounts: state.accounts.filter((account) => account.id !== action.payload),
       };
+     case 'ADD_CREDIT_CARD':
+      return {
+        ...state,
+        creditCards: [...state.creditCards, action.payload],
+      };
+    case 'UPDATE_CREDIT_CARD':
+      return {
+        ...state,
+        creditCards: state.creditCards.map((card) =>
+          card.id === action.payload.id ? action.payload : card
+        ),
+      };
+    case 'DELETE_CREDIT_CARD':
+      return {
+        ...state,
+        creditCards: state.creditCards.filter((card) => card.id !== action.payload),
+      };
+    case 'PAY_INVOICE': {
+      const { creditCardId, accountId, amount, date } = action.payload;
+      const card = state.creditCards.find(c => c.id === creditCardId);
+      if (!card) return state;
+
+      // 1. Create the payment transaction (an expense from a bank account)
+      const paymentTransaction: Transaction = {
+        id: new Date().toISOString() + Math.random(),
+        accountId,
+        type: 'expense',
+        amount: amount,
+        date,
+        description: `Pagamento Fatura ${card.name}`,
+        category: 'Pagamento de Fatura',
+      };
+
+      // 2. Mark associated credit card expenses as paid
+      const updatedTransactions = state.transactions.map(tx => {
+        if (tx.creditCardId === creditCardId && !tx.paid) {
+          return { ...tx, paid: true, paidInInvoiceId: paymentTransaction.id };
+        }
+        return tx;
+      });
+
+      return {
+        ...state,
+        transactions: [paymentTransaction, ...updatedTransactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+      };
+    }
     case 'ADD_TRANSACTION':
       return {
         ...state,
@@ -109,10 +162,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
     case 'UPDATE_CATEGORY': {
       const newCategory = action.payload;
-      // Find the original category in the current state to get the old name
       const oldCategory = state.categories.find(c => c.id === newCategory.id);
 
-      // If the category isn't found, or the name hasn't changed, just update the categories list.
       if (!oldCategory || oldCategory.name === newCategory.name) {
         return {
           ...state,
@@ -122,7 +173,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         };
       }
 
-      // If the name has changed, we need to update all transactions that used the old name.
       const updatedTransactions = state.transactions.map(tx => {
         if (tx.category === oldCategory.name) {
           return { ...tx, category: newCategory.name };
@@ -143,21 +193,17 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case 'DELETE_CATEGORY': {
       const categoryToDelete = action.payload;
       
-      // Define a generic fallback category name based on the type
       const fallbackCategoryName = categoryToDelete.type === 'income' 
         ? 'Outras Receitas' 
         : 'Outras Despesas';
 
-      // Update transactions that used the deleted category
       const updatedTransactions = state.transactions.map(tx => {
         if (tx.category === categoryToDelete.name) {
-          // Re-assign to the fallback category
           return { ...tx, category: fallbackCategoryName };
         }
         return tx;
       });
 
-      // Remove the category from the list
       const updatedCategories = state.categories.filter(c => c.id !== categoryToDelete.id);
       
       return {
