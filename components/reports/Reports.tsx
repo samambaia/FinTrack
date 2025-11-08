@@ -5,7 +5,7 @@ import Card from '../common/Card';
 import BarChart from '../common/BarChart';
 import { ArrowUpIcon, ArrowDownIcon } from '@heroicons/react/24/solid';
 
-type ReportType = 'expensesByCategory' | 'cashFlow' | 'comparison';
+type ReportType = 'expensesByCategory' | 'cashFlow' | 'comparison' | 'creditCardInvoice';
 
 const ComparisonMetric: React.FC<{
   title: string;
@@ -56,10 +56,11 @@ const ComparisonMetric: React.FC<{
 
 
 const Reports: React.FC = () => {
-    const { transactions } = useContext(AppContext);
+    const { transactions, creditCards } = useContext(AppContext);
     const [reportType, setReportType] = useState<ReportType>('expensesByCategory');
     const [year, setYear] = useState(new Date().getFullYear());
     const [month, setMonth] = useState(new Date().getMonth());
+    const [selectedCardId, setSelectedCardId] = useState<string>('');
     
     const availableYears = useMemo(() => {
         if (transactions.length === 0) return [new Date().getFullYear()];
@@ -178,6 +179,110 @@ const Reports: React.FC = () => {
                     </div>
                 );
             }
+            case 'creditCardInvoice': {
+                if (!selectedCardId) {
+                    return (
+                        <div>
+                            <p className="text-gray-500 dark:text-gray-400 text-center py-4">Selecione um cartão para ver a fatura.</p>
+                        </div>
+                    );
+                }
+
+                const selectedCard = creditCards.find(c => c.id === selectedCardId);
+                if (!selectedCard) {
+                    return (
+                        <div>
+                            <p className="text-gray-500 dark:text-gray-400 text-center py-4">Cartão não encontrado.</p>
+                        </div>
+                    );
+                }
+
+                // Filter transactions for the selected card and period
+                const invoiceTransactions = transactions.filter(t => {
+                    if (t.creditCardId !== selectedCardId || t.type !== 'creditCardExpense') return false;
+                    const txDate = new Date(t.date);
+                    return txDate.getFullYear() === year && txDate.getMonth() === month;
+                });
+
+                const totalInvoice = invoiceTransactions.reduce((sum, t) => sum + t.amount, 0);
+                const paidTransactions = invoiceTransactions.filter(t => t.paid);
+                const unpaidTransactions = invoiceTransactions.filter(t => !t.paid);
+                const totalPaid = paidTransactions.reduce((sum, t) => sum + t.amount, 0);
+                const totalUnpaid = unpaidTransactions.reduce((sum, t) => sum + t.amount, 0);
+
+                // Group by category
+                const categoryMap = new Map<string, number>();
+                invoiceTransactions.forEach(t => {
+                    const current = categoryMap.get(t.category) || 0;
+                    categoryMap.set(t.category, current + t.amount);
+                });
+
+                const categoryData = Array.from(categoryMap.entries())
+                    .map(([label, value]) => ({ label, value }))
+                    .sort((a, b) => b.value - a.value);
+
+                return (
+                    <div>
+                        <h3 className="text-lg font-semibold mb-4 text-gray-700 dark:text-gray-300">
+                            Fatura {selectedCard.name} - {monthNames[month]} {year}
+                        </h3>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                            <div className="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg">
+                                <h4 className="text-md font-semibold text-gray-600 dark:text-gray-300 mb-2">Total da Fatura</h4>
+                                <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">
+                                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalInvoice)}
+                                </p>
+                            </div>
+                            <div className="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg">
+                                <h4 className="text-md font-semibold text-gray-600 dark:text-gray-300 mb-2">Pago</h4>
+                                <p className="text-2xl font-bold text-success-600 dark:text-success-400">
+                                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalPaid)}
+                                </p>
+                            </div>
+                            <div className="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg">
+                                <h4 className="text-md font-semibold text-gray-600 dark:text-gray-300 mb-2">Em Aberto</h4>
+                                <p className="text-2xl font-bold text-danger-500">
+                                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalUnpaid)}
+                                </p>
+                            </div>
+                        </div>
+
+                        {categoryData.length > 0 && (
+                            <div className="mb-6">
+                                <h4 className="text-md font-semibold mb-2 text-gray-700 dark:text-gray-300">Gastos por Categoria</h4>
+                                <BarChart data={categoryData} />
+                            </div>
+                        )}
+
+                        <div className="mt-6">
+                            <h4 className="text-md font-semibold mb-3 text-gray-700 dark:text-gray-300">Transações da Fatura</h4>
+                            {invoiceTransactions.length > 0 ? (
+                                <div className="space-y-2">
+                                    {invoiceTransactions.map(tx => (
+                                        <div key={tx.id} className="flex justify-between items-center bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
+                                            <div className="flex-1">
+                                                <p className="font-medium text-gray-800 dark:text-gray-200">{tx.description}</p>
+                                                <p className="text-sm text-gray-500 dark:text-gray-400">{tx.category} - {new Date(tx.date).toLocaleDateString('pt-BR')}</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="font-semibold text-danger-500">
+                                                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(tx.amount)}
+                                                </p>
+                                                {tx.paid && (
+                                                    <p className="text-xs text-success-600 dark:text-success-400">Pago</p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-gray-500 dark:text-gray-400 text-center py-4">Nenhuma transação neste período.</p>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
         }
     }
 
@@ -203,10 +308,16 @@ const Reports: React.FC = () => {
                 <div className="flex flex-col sm:flex-row gap-4 mb-6">
                     <div className="flex-1">
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Tipo de Relatório</label>
-                        <select value={reportType} onChange={e => setReportType(e.target.value as ReportType)} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md">
+                        <select value={reportType} onChange={e => {
+                            setReportType(e.target.value as ReportType);
+                            if (e.target.value !== 'creditCardInvoice') {
+                                setSelectedCardId('');
+                            }
+                        }} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md">
                             <option value="expensesByCategory">Despesas por Categoria</option>
                             <option value="cashFlow">Fluxo de Caixa Mensal</option>
                             <option value="comparison">Comparativo Mensal</option>
+                            <option value="creditCardInvoice">Fatura de Cartão</option>
                         </select>
                     </div>
                     <div className="flex-1">
@@ -221,6 +332,23 @@ const Reports: React.FC = () => {
                             {monthNames.map((m, i) => <option key={m} value={i}>{m}</option>)}
                         </select>
                     </div>
+                    {reportType === 'creditCardInvoice' && (
+                        <div className="flex-1">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Cartão</label>
+                            <select 
+                                value={selectedCardId} 
+                                onChange={e => setSelectedCardId(e.target.value)} 
+                                className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md"
+                            >
+                                <option value="">Selecione um cartão</option>
+                                {creditCards.filter(c => !c.inactive).map(card => (
+                                    <option key={card.id} value={card.id}>
+                                        {card.name} {card.lastFourDigits ? `- Final ${card.lastFourDigits}` : ''}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
                 </div>
 
                 <div>{renderReport()}</div>

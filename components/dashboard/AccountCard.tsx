@@ -18,7 +18,8 @@ const AccountCard: React.FC<AccountCardProps> = ({ account }) => {
     const totalExpenses = accountTransactions
       .filter(t => t.type === 'expense')
       .reduce((sum, transaction) => sum + transaction.amount, 0);
-    return account.initialBalance + totalIncome - totalExpenses;
+    const balance = account.initialBalance + totalIncome - totalExpenses;
+    return isNaN(balance) ? 0 : balance;
   }, [account, transactions]);
 
   return (

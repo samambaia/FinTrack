@@ -14,22 +14,22 @@ const TransactionItem: React.FC<{
     const isCreditCard = transaction.type === 'creditCardExpense';
     
     return (
-        <li className="flex items-center justify-between py-3">
-            <div className="flex-1 min-w-0 flex items-center">
+        <li className="flex items-center justify-between py-3 gap-3">
+            <div className="flex-1 min-w-0 flex items-center overflow-hidden">
                  {isCreditCard && <CreditCardIcon className="h-5 w-5 mr-3 text-gray-400 flex-shrink-0" />}
-                <div>
+                <div className="min-w-0 flex-1">
                     <p className="font-medium text-gray-800 dark:text-gray-100 truncate">{transaction.description}</p>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">{transaction.sourceName} - {transaction.category}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{transaction.sourceName} - {transaction.category}</p>
                 </div>
             </div>
-            <div className="text-right ml-2">
+            <div className="text-right flex-shrink-0 ml-2">
                  <p className={`font-semibold ${isIncome ? 'text-success-600 dark:text-success-500' : 'text-danger-500'}`}>
                     {isIncome ? '+ ' : '- '}
                     {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(transaction.amount)}
                 </p>
                  <p className="text-sm text-gray-500 dark:text-gray-400">{new Date(transaction.date).toLocaleDateString()}</p>
             </div>
-             <div className="flex items-center ml-2">
+             <div className="flex items-center flex-shrink-0 ml-2">
                  <button onClick={() => onEdit(transaction)} className="mr-1 text-gray-400 hover:text-primary-500 transition-colors p-2">
                     <PencilIcon className="h-5 w-5" />
                 </button>

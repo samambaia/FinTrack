@@ -67,7 +67,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         auth: { isAuthenticated: true, user: action.payload },
       };
     case 'LOGOUT':
-      localStorage.removeItem('finTrackState');
       return {
         ...initialState,
         theme: state.theme, // Persist theme preference

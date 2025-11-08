@@ -16,11 +16,13 @@ const Dashboard: React.FC = () => {
   const activeAccounts = useMemo(() => accounts.filter(acc => acc.active), [accounts]);
   
   const totalBalance = useMemo(() => {
+    if (activeAccounts.length === 0) return 0;
     return activeAccounts.reduce((total, account) => {
         const accountTransactions = transactions.filter(t => t.accountId === account.id);
         const income = accountTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
         const expenses = accountTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-        return total + (account.initialBalance + income - expenses);
+        const accountBalance = account.initialBalance + income - expenses;
+        return total + (isNaN(accountBalance) ? 0 : accountBalance);
     }, 0);
   }, [activeAccounts, transactions]);
 

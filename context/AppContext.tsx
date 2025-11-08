@@ -1,6 +1,8 @@
 import React, { createContext, useReducer, useEffect, ReactNode, Dispatch, useRef } from 'react';
 import { Account, Transaction, User, Theme, Category, CreditCard } from '../types';
 import { AppAction, appReducer, initialState, AppState } from './AppReducer';
+import { supabase } from '../lib/supabase';
+import * as supabaseService from '../lib/supabaseService';
 
 interface AppContextProps {
   accounts: Account[];
@@ -23,116 +25,251 @@ export const AppContext = createContext<AppContextProps>({
 export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const isInitialized = useRef(false);
+  const isSyncing = useRef(false);
 
-  // EFFECT 1: Hydrate state from localStorage on initial mount
+  // EFFECT 1: Check authentication and load data from Supabase on initial mount
   useEffect(() => {
-    try {
-      const storedStateJSON = localStorage.getItem('finTrackState');
-      if (!storedStateJSON) {
-        console.log("No saved state found. Starting fresh.");
-        return;
-      };
-
-      const storedState = JSON.parse(storedStateJSON);
-
-      if (typeof storedState !== 'object' || storedState === null) {
-        throw new Error('Stored state is not a valid object.');
-      }
-
-      // Validate Auth State
-      let validAuth = { isAuthenticated: false, user: null };
-      if (storedState.auth && typeof storedState.auth === 'object') {
-          const { isAuthenticated, user } = storedState.auth;
-          if (isAuthenticated === true && user && typeof user === 'object' && typeof user.email === 'string') {
-              validAuth = { isAuthenticated: true, user: { email: user.email } };
-          }
-      }
-      
-      // Validate Theme
-      const validTheme = ['light', 'dark'].includes(storedState.theme) ? storedState.theme : initialState.theme;
-      
-      // Validate Accounts
-      const validAccounts = Array.isArray(storedState.accounts)
-          ? storedState.accounts.filter((acc: any): acc is Account => 
-              acc && typeof acc === 'object' && typeof acc.id === 'string' &&
-              typeof acc.bankName === 'string' && typeof acc.accountNumber === 'string' &&
-              typeof acc.initialBalance === 'number' && isFinite(acc.initialBalance) &&
-              typeof acc.active === 'boolean'
-            )
-          : initialState.accounts;
-
-      // Validate Credit Cards
-      const validCreditCards = Array.isArray(storedState.creditCards)
-          ? storedState.creditCards.filter((card: any): card is CreditCard =>
-              card && typeof card === 'object' && typeof card.id === 'string' &&
-              typeof card.name === 'string' && typeof card.flag === 'string' &&
-              typeof card.inactive === 'boolean'
-            )
-          : initialState.creditCards;
-
-      // Validate Transactions
-      const validTransactions = Array.isArray(storedState.transactions)
-          ? storedState.transactions.filter((t: any): t is Transaction =>
-              t && typeof t === 'object' && typeof t.id === 'string' &&
-              typeof t.description === 'string' &&
-              typeof t.amount === 'number' && isFinite(t.amount) &&
-              typeof t.date === 'string' && !isNaN(new Date(t.date).getTime()) &&
-              ['income', 'expense', 'creditCardExpense'].includes(t.type)
-            )
-          : initialState.transactions;
-
-      // Validate Categories
-      const validCategories = Array.isArray(storedState.categories)
-          ? storedState.categories.filter((cat: any): cat is Category =>
-              cat && typeof cat === 'object' && cat.id && cat.name && cat.type
-            )
-          : initialState.categories;
-      
-      let sortedTransactions = validTransactions;
+    const initializeApp = async () => {
       try {
-          sortedTransactions = [...validTransactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      } catch (sortError) {
-          console.error("Error sorting transactions during hydration. Using unsorted list.", sortError);
+        // Check for existing session
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        // Load theme from localStorage (preference local)
+        const savedTheme = localStorage.getItem('finTrackTheme') as Theme;
+        const validTheme = savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : initialState.theme;
+
+        if (session?.user) {
+          // User is authenticated, load data from Supabase
+          const userId = session.user.id;
+          const userEmail = session.user.email || '';
+
+          try {
+            // Load all data in parallel
+            const [accounts, creditCards, transactions, categories] = await Promise.all([
+              supabaseService.fetchAccounts(userId),
+              supabaseService.fetchCreditCards(userId),
+              supabaseService.fetchTransactions(userId),
+              supabaseService.fetchCategories(userId),
+            ]);
+
+            // Initialize default categories if user has none
+            if (categories.length === 0) {
+              await supabaseService.initializeDefaultCategories(userId);
+              const updatedCategories = await supabaseService.fetchCategories(userId);
+              
+              const hydratedState: AppState = {
+                accounts,
+                creditCards,
+                transactions: transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+                categories: updatedCategories,
+                auth: { isAuthenticated: true, user: { email: userEmail } },
+                theme: validTheme,
+              };
+              dispatch({ type: 'HYDRATE_STATE', payload: hydratedState });
+            } else {
+              const hydratedState: AppState = {
+                accounts,
+                creditCards,
+                transactions: transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+                categories,
+                auth: { isAuthenticated: true, user: { email: userEmail } },
+                theme: validTheme,
+              };
+              dispatch({ type: 'HYDRATE_STATE', payload: hydratedState });
+            }
+          } catch (error) {
+            console.error('Error loading data from Supabase:', error);
+            // Still set auth state even if data loading fails
+            dispatch({ 
+              type: 'HYDRATE_STATE', 
+              payload: { ...initialState, auth: { isAuthenticated: true, user: { email: userEmail } }, theme: validTheme } 
+            });
+          }
+        } else {
+          // No session, start fresh
+          dispatch({ 
+            type: 'HYDRATE_STATE', 
+            payload: { ...initialState, theme: validTheme } 
+          });
+        }
+      } catch (error) {
+        console.error("Critical error during app initialization:", error);
+        dispatch({ type: 'HYDRATE_STATE', payload: initialState });
+      } finally {
+        isInitialized.current = true;
       }
+    };
 
-      const hydratedState: AppState = {
-          accounts: validAccounts,
-          creditCards: validCreditCards,
-          transactions: sortedTransactions,
-          categories: validCategories,
-          auth: validAuth,
-          theme: validTheme,
-      };
+    initializeApp();
 
-      dispatch({ type: 'HYDRATE_STATE', payload: hydratedState });
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_OUT') {
+        dispatch({ type: 'LOGOUT' });
+      } else if (event === 'SIGNED_IN' && session?.user) {
+        const userId = session.user.id;
+        const userEmail = session.user.email || '';
+        
+        // Load theme from localStorage
+        const savedTheme = localStorage.getItem('finTrackTheme') as Theme;
+        const validTheme = savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : state.theme;
+        
+        try {
+          const [accounts, creditCards, transactions, categories] = await Promise.all([
+            supabaseService.fetchAccounts(userId),
+            supabaseService.fetchCreditCards(userId),
+            supabaseService.fetchTransactions(userId),
+            supabaseService.fetchCategories(userId),
+          ]);
 
-    } catch (error) {
-      console.error("Critical error during state hydration. Ignoring stored state.", error);
-    } finally {
-      isInitialized.current = true;
-    }
+          if (categories.length === 0) {
+            await supabaseService.initializeDefaultCategories(userId);
+            const updatedCategories = await supabaseService.fetchCategories(userId);
+            dispatch({
+              type: 'HYDRATE_STATE',
+              payload: {
+                accounts,
+                creditCards,
+                transactions: transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+                categories: updatedCategories,
+                auth: { isAuthenticated: true, user: { email: userEmail } },
+                theme: validTheme,
+              },
+            });
+          } else {
+            dispatch({
+              type: 'HYDRATE_STATE',
+              payload: {
+                accounts,
+                creditCards,
+                transactions: transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+                categories,
+                auth: { isAuthenticated: true, user: { email: userEmail } },
+                theme: validTheme,
+              },
+            });
+          }
+        } catch (error) {
+          console.error('Error loading data after sign in:', error);
+        }
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []); // Empty array ensures this runs only once on mount
 
-  // EFFECT 2: Save state to localStorage on every change *after* initialization
+  // EFFECT 2: Sync state changes to Supabase (only when authenticated and after initialization)
   useEffect(() => {
-    if (!isInitialized.current) {
-      return; // Don't save state until hydration is complete
+    if (!isInitialized.current || !state.auth.isAuthenticated || isSyncing.current) {
+      return;
     }
-    
-    try {
-      const stateToSave = {
-        accounts: state.accounts,
-        creditCards: state.creditCards,
-        transactions: state.transactions,
-        categories: state.categories,
-        auth: state.auth,
-        theme: state.theme,
-      };
-      localStorage.setItem('finTrackState', JSON.stringify(stateToSave));
-    } catch (error) {
-      console.error("Failed to save state to localStorage", error);
-    }
-  }, [state]);
+
+    const syncToSupabase = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+
+      const userId = session.user.id;
+      isSyncing.current = true;
+
+      try {
+        // Sync accounts
+        const currentAccounts = state.accounts;
+        const supabaseAccounts = await supabaseService.fetchAccounts(userId);
+        const supabaseAccountIds = new Set(supabaseAccounts.map(a => a.id));
+        
+        for (const account of currentAccounts) {
+          if (supabaseAccountIds.has(account.id)) {
+            await supabaseService.updateAccount(userId, account);
+          } else {
+            await supabaseService.insertAccount(userId, account);
+          }
+        }
+        
+        // Remove deleted accounts
+        const currentAccountIds = new Set(currentAccounts.map(a => a.id));
+        for (const account of supabaseAccounts) {
+          if (!currentAccountIds.has(account.id)) {
+            await supabaseService.deleteAccount(userId, account.id);
+          }
+        }
+
+        // Sync credit cards
+        const currentCreditCards = state.creditCards;
+        const supabaseCreditCards = await supabaseService.fetchCreditCards(userId);
+        const supabaseCreditCardIds = new Set(supabaseCreditCards.map(c => c.id));
+        
+        for (const card of currentCreditCards) {
+          if (supabaseCreditCardIds.has(card.id)) {
+            await supabaseService.updateCreditCard(userId, card);
+          } else {
+            await supabaseService.insertCreditCard(userId, card);
+          }
+        }
+        
+        const currentCreditCardIds = new Set(currentCreditCards.map(c => c.id));
+        for (const card of supabaseCreditCards) {
+          if (!currentCreditCardIds.has(card.id)) {
+            await supabaseService.deleteCreditCard(userId, card.id);
+          }
+        }
+
+        // Sync transactions
+        const currentTransactions = state.transactions;
+        const supabaseTransactions = await supabaseService.fetchTransactions(userId);
+        const supabaseTransactionIds = new Set(supabaseTransactions.map(t => t.id));
+        
+        for (const transaction of currentTransactions) {
+          if (supabaseTransactionIds.has(transaction.id)) {
+            await supabaseService.updateTransaction(userId, transaction);
+          } else {
+            await supabaseService.insertTransaction(userId, transaction);
+          }
+        }
+        
+        const currentTransactionIds = new Set(currentTransactions.map(t => t.id));
+        for (const transaction of supabaseTransactions) {
+          if (!currentTransactionIds.has(transaction.id)) {
+            await supabaseService.deleteTransaction(userId, transaction.id);
+          }
+        }
+
+        // Sync categories
+        const currentCategories = state.categories;
+        const supabaseCategories = await supabaseService.fetchCategories(userId);
+        const supabaseCategoryIds = new Set(supabaseCategories.map(c => c.id));
+        
+        for (const category of currentCategories) {
+          if (supabaseCategoryIds.has(category.id)) {
+            await supabaseService.updateCategory(userId, category);
+          } else {
+            await supabaseService.insertCategory(userId, category);
+          }
+        }
+        
+        const currentCategoryIds = new Set(currentCategories.map(c => c.id));
+        for (const category of supabaseCategories) {
+          if (!currentCategoryIds.has(category.id)) {
+            await supabaseService.deleteCategory(userId, category.id);
+          }
+        }
+      } catch (error) {
+        console.error('Error syncing to Supabase:', error);
+      } finally {
+        isSyncing.current = false;
+      }
+    };
+
+    // Debounce sync to avoid too many requests
+    const timeoutId = setTimeout(syncToSupabase, 1000);
+    return () => clearTimeout(timeoutId);
+  }, [state.accounts, state.creditCards, state.transactions, state.categories, state.auth.isAuthenticated]);
+
+  // EFFECT 3: Save theme to localStorage (preference local)
+  useEffect(() => {
+    localStorage.setItem('finTrackTheme', state.theme);
+  }, [state.theme]);
 
   return (
     <AppContext.Provider value={{ ...state, dispatch }}>

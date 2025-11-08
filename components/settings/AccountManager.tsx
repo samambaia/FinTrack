@@ -39,7 +39,7 @@ const AccountManager: React.FC = () => {
   return (
     <Card>
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-semibold text-gray-700 dark:text-gray-300">Gerenciar Contas</h2>
+        <h2 className="text-lg font-semibold text-gray-700 dark:text-gray-300">Contas</h2>
         <button
           onClick={handleAddAccount}
           className="flex items-center bg-primary-600 text-white px-3 py-1.5 rounded-md shadow-sm hover:bg-primary-700"
