@@ -14,10 +14,8 @@ export const fetchAccounts = async (userId: string): Promise<Account[]> => {
     throw error;
   }
 
-  if (!data) return [];
-
   // Convert from Supabase format (snake_case) to app format (camelCase)
-  return data.map(acc => ({
+  return (data || []).map(acc => ({
     id: acc.id,
     bankName: acc.bank_name,
     accountNumber: acc.account_number,
@@ -231,15 +229,15 @@ export const insertTransaction = async (userId: string, transaction: Transaction
     .insert({
       id: transaction.id,
       user_id: userId,
-      account_id: transaction.accountId,
-      credit_card_id: transaction.creditCardId,
+      account_id: transaction.accountId || null,
+      credit_card_id: transaction.creditCardId || null,
       category: transaction.category,
       description: transaction.description,
       date: transaction.date,
       amount: transaction.amount,
       type: transaction.type,
       paid: transaction.paid || false,
-      paid_in_invoice_id: transaction.paidInInvoiceId,
+      paid_in_invoice_id: transaction.paidInInvoiceId || null,
     })
     .select()
     .single();
@@ -267,15 +265,15 @@ export const updateTransaction = async (userId: string, transaction: Transaction
   const { data, error } = await supabase
     .from('transactions')
     .update({
-      account_id: transaction.accountId,
-      credit_card_id: transaction.creditCardId,
+      account_id: transaction.accountId || null,
+      credit_card_id: transaction.creditCardId || null,
       category: transaction.category,
       description: transaction.description,
       date: transaction.date,
       amount: transaction.amount,
       type: transaction.type,
       paid: transaction.paid,
-      paid_in_invoice_id: transaction.paidInInvoiceId,
+      paid_in_invoice_id: transaction.paidInInvoiceId || null,
     })
     .eq('id', transaction.id)
     .eq('user_id', userId)
@@ -423,13 +421,22 @@ export const initializeDefaultCategories = async (userId: string): Promise<void>
     return; // User already has categories
   }
 
-  // Insert default categories
-  for (const category of defaultCategories) {
-    try {
-      await insertCategory(userId, category);
-    } catch (error) {
-      console.error(`Error inserting default category ${category.name}:`, error);
-    }
+  // Insert all default categories in a single batch operation
+  const categoriesToInsert = defaultCategories.map(cat => ({
+    id: cat.id,
+    user_id: userId,
+    name: cat.name,
+    type: cat.type,
+    is_default: cat.isDefault,
+  }));
+
+  const { error } = await supabase
+    .from('categories')
+    .insert(categoriesToInsert);
+
+  if (error) {
+    console.error('Error inserting default categories:', error);
+    throw error;
   }
 };
 
