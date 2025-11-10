@@ -27,6 +27,7 @@ export const fetchAccounts = async (userId: string): Promise<Account[]> => {
 };
 
 export const insertAccount = async (userId: string, account: Account): Promise<Account> => {
+  console.log('💾 Inserting account to Supabase:', { userId, accountId: account.id });
   const { data, error } = await supabase
     .from('accounts')
     .insert({
@@ -41,10 +42,11 @@ export const insertAccount = async (userId: string, account: Account): Promise<A
     .single();
 
   if (error) {
-    console.error('Error inserting account:', error);
+    console.error('❌ Error inserting account:', error);
     throw error;
   }
 
+  console.log('✅ Account inserted successfully');
   return {
     id: data.id,
     bankName: data.bank_name,

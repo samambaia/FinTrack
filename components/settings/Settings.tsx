@@ -1,6 +1,6 @@
 import React, { useContext } from 'react';
 import { AppContext } from '../../context/AppContext';
-import { supabase } from '../../lib/supabase';
+import { logoutUser } from '../../lib/authService';
 import AccountManager from './AccountManager';
 import CategoryManager from './CategoryManager';
 import CreditCardManager from './CreditCardManager';
@@ -13,15 +13,10 @@ const Settings: React.FC = () => {
     dispatch({ type: 'TOGGLE_THEME' });
   };
   
-  const handleLogout = async () => {
-    try {
-      await supabase.auth.signOut();
-      // Auth state change will be handled by AppContext
-    } catch (error) {
-      console.error('Error signing out:', error);
-      // Still dispatch logout even if Supabase signout fails
-      dispatch({ type: 'LOGOUT' });
-    }
+  const handleLogout = () => {
+    // Logout clears localStorage and resets state
+    logoutUser();
+    dispatch({ type: 'LOGOUT' });
   }
 
   return (

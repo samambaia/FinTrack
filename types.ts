@@ -37,6 +37,7 @@ export interface Category {
 }
 
 export interface User {
+  id: string;
   email: string;
 }
 

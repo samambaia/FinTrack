@@ -1,8 +1,9 @@
 import React, { createContext, useReducer, useEffect, ReactNode, Dispatch, useRef } from 'react';
 import { Account, Transaction, User, Theme, Category, CreditCard } from '../types';
 import { AppAction, appReducer, initialState, AppState } from './AppReducer';
-import { supabase } from '../lib/supabase';
+//import { supabase } from '../lib/supabase';
 import * as supabaseService from '../lib/supabaseService';
+import { getCurrentUser } from '../lib/authService';
 
 interface AppContextProps {
   accounts: Account[];
@@ -26,22 +27,29 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const isInitialized = useRef(false);
   const isSyncing = useRef(false);
+  const isLoggingOut = useRef(false);
+  const lastAuthState = useRef<boolean>(false);
 
-  // EFFECT 1: Check authentication and load data from Supabase on initial mount
+  // EFFECT 1: Check authentication and load data from Supabase on initial mount and after login
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        // Check for existing session
-        const { data: { session } } = await supabase.auth.getSession();
+        // Check for existing user in localStorage
+        const currentUser = getCurrentUser();
         
-        // Load theme from localStorage (preference local)
+        // Load theme from localStorage on first init, or preserve current theme on re-login
         const savedTheme = localStorage.getItem('finTrackTheme') as Theme;
         const validTheme = savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : initialState.theme;
+        // Use current theme if already initialized (preserves theme during logout/login)
+        const themeToUse = isInitialized.current ? state.theme : validTheme;
+        console.log('🎨 Theme loading - Saved:', savedTheme, '| Using:', themeToUse, '| Initialized:', isInitialized.current);
 
-        if (session?.user) {
+        if (currentUser) {
           // User is authenticated, load data from Supabase
-          const userId = session.user.id;
-          const userEmail = session.user.email || '';
+          const userId = currentUser.id;
+          const userEmail = currentUser.email;
+          
+          console.log('📊 Loading data for user:', userId, userEmail);
 
           try {
             // Load all data in parallel
@@ -51,6 +59,11 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
               supabaseService.fetchTransactions(userId),
               supabaseService.fetchCategories(userId),
             ]);
+            
+            console.log('📦 Loaded accounts:', accounts.length);
+            console.log('💳 Loaded credit cards:', creditCards.length);
+            console.log('💰 Loaded transactions:', transactions.length);
+            console.log('🏷️ Loaded categories:', categories.length);
 
             // Initialize default categories if user has none
             if (categories.length === 0) {
@@ -62,8 +75,8 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
                 creditCards,
                 transactions: transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
                 categories: updatedCategories,
-                auth: { isAuthenticated: true, user: { email: userEmail } },
-                theme: validTheme,
+                auth: { isAuthenticated: true, user: { id: userId, email: userEmail } },
+                theme: themeToUse,
               };
               dispatch({ type: 'HYDRATE_STATE', payload: hydratedState });
             } else {
@@ -72,8 +85,8 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
                 creditCards,
                 transactions: transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
                 categories,
-                auth: { isAuthenticated: true, user: { email: userEmail } },
-                theme: validTheme,
+                auth: { isAuthenticated: true, user: { id: userId, email: userEmail } },
+                theme: themeToUse,
               };
               dispatch({ type: 'HYDRATE_STATE', payload: hydratedState });
             }
@@ -82,95 +95,73 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
             // Still set auth state even if data loading fails
             dispatch({ 
               type: 'HYDRATE_STATE', 
-              payload: { ...initialState, auth: { isAuthenticated: true, user: { email: userEmail } }, theme: validTheme } 
+              payload: { ...initialState, auth: { isAuthenticated: true, user: { id: userId, email: userEmail } }, theme: themeToUse } 
             });
           }
         } else {
-          // No session, start fresh
+          // No session, start fresh but preserve theme
           dispatch({ 
             type: 'HYDRATE_STATE', 
-            payload: { ...initialState, theme: validTheme } 
+            payload: { ...initialState, theme: themeToUse } 
           });
         }
       } catch (error) {
         console.error("Critical error during app initialization:", error);
-        dispatch({ type: 'HYDRATE_STATE', payload: initialState });
-      } finally {
-        isInitialized.current = true;
-      }
-    };
-
-    initializeApp();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_OUT') {
-        dispatch({ type: 'LOGOUT' });
-      } else if (event === 'SIGNED_IN' && session?.user) {
-        const userId = session.user.id;
-        const userEmail = session.user.email || '';
-        
-        // Load theme from localStorage
+        // Preserve theme even on critical error
         const savedTheme = localStorage.getItem('finTrackTheme') as Theme;
-        const validTheme = savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : state.theme;
-        
-        try {
-          const [accounts, creditCards, transactions, categories] = await Promise.all([
-            supabaseService.fetchAccounts(userId),
-            supabaseService.fetchCreditCards(userId),
-            supabaseService.fetchTransactions(userId),
-            supabaseService.fetchCategories(userId),
-          ]);
-
-          if (categories.length === 0) {
-            await supabaseService.initializeDefaultCategories(userId);
-            const updatedCategories = await supabaseService.fetchCategories(userId);
-            dispatch({
-              type: 'HYDRATE_STATE',
-              payload: {
-                accounts,
-                creditCards,
-                transactions: transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
-                categories: updatedCategories,
-                auth: { isAuthenticated: true, user: { email: userEmail } },
-                theme: validTheme,
-              },
-            });
-          } else {
-            dispatch({
-              type: 'HYDRATE_STATE',
-              payload: {
-                accounts,
-                creditCards,
-                transactions: transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
-                categories,
-                auth: { isAuthenticated: true, user: { email: userEmail } },
-                theme: validTheme,
-              },
-            });
-          }
-        } catch (error) {
-          console.error('Error loading data after sign in:', error);
-        }
+        const themeToUse = (savedTheme === 'light' || savedTheme === 'dark') ? savedTheme : (isInitialized.current ? state.theme : initialState.theme);
+        dispatch({ type: 'HYDRATE_STATE', payload: { ...initialState, theme: themeToUse } });
+      } finally {
+        const currentUserAfterInit = getCurrentUser();
+        const wasAuthenticatedBeforeInit = lastAuthState.current;
+        lastAuthState.current = !!currentUserAfterInit;
+        isInitialized.current = true;
+        console.log('🏁 Init complete - Was:', wasAuthenticatedBeforeInit, '| Now:', !!currentUserAfterInit);
       }
-    });
-
-    return () => {
-      subscription.unsubscribe();
     };
-  }, []); // Empty array ensures this runs only once on mount
+
+    // Only run initialization when:
+    // 1. First mount (isInitialized is false)
+    // 2. Auth state changes from false to true (user just logged in)
+    const currentUser = getCurrentUser();
+    const isNowAuthenticated = !!currentUser;
+    const wasAuthenticated = lastAuthState.current;
+    
+    console.log('🔍 Init check - Now:', isNowAuthenticated, '| Was:', wasAuthenticated, '| Initialized:', isInitialized.current);
+    
+    // Only run if not initialized OR if user just logged in (transition from false to true)
+    const shouldInitialize = !isInitialized.current || (!wasAuthenticated && isNowAuthenticated);
+    
+    if (shouldInitialize) {
+      console.log('✅ Running initialization');
+      initializeApp();
+    } else {
+      console.log('⏭️ Skipping initialization');
+    }
+  }, [state.auth.isAuthenticated]); // Re-run when auth state changes
+
+  // EFFECT 1B: Update lastAuthState when user logs out
+  useEffect(() => {
+    if (!state.auth.isAuthenticated) {
+      console.log('🚪 Logout detected, resetting auth state tracking');
+      lastAuthState.current = false;
+      isLoggingOut.current = false;
+    }
+  }, [state.auth.isAuthenticated]);
 
   // EFFECT 2: Sync state changes to Supabase (only when authenticated and after initialization)
   useEffect(() => {
-    if (!isInitialized.current || !state.auth.isAuthenticated || isSyncing.current) {
+    if (!isInitialized.current || !state.auth.isAuthenticated || !state.auth.user || isSyncing.current || isLoggingOut.current) {
       return;
     }
 
     const syncToSupabase = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) return;
+      const currentUser = getCurrentUser();
+      if (!currentUser) return;
 
-      const userId = session.user.id;
+      const userId = currentUser.id;
+      console.log('🔄 Starting sync for user:', userId);
+      console.log('📊 Current state - Accounts:', state.accounts.length, 'Cards:', state.creditCards.length, 'Transactions:', state.transactions.length);
       isSyncing.current = true;
 
       try {
@@ -181,8 +172,10 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
         
         for (const account of currentAccounts) {
           if (supabaseAccountIds.has(account.id)) {
+            console.log('✅ Updating account:', account.id);
             await supabaseService.updateAccount(userId, account);
           } else {
+            console.log('➕ Inserting new account:', account.id);
             await supabaseService.insertAccount(userId, account);
           }
         }
@@ -191,6 +184,7 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
         const currentAccountIds = new Set(currentAccounts.map(a => a.id));
         for (const account of supabaseAccounts) {
           if (!currentAccountIds.has(account.id)) {
+            console.log('🗑️ Deleting account from Supabase:', account.id);
             await supabaseService.deleteAccount(userId, account.id);
           }
         }
@@ -264,11 +258,14 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
     // Debounce sync to avoid too many requests
     const timeoutId = setTimeout(syncToSupabase, 1000);
     return () => clearTimeout(timeoutId);
-  }, [state.accounts, state.creditCards, state.transactions, state.categories, state.auth.isAuthenticated]);
+  }, [state.accounts, state.creditCards, state.transactions, state.categories]);
+  // Note: Removed state.auth from dependencies to prevent re-sync on LOGIN action
 
-  // EFFECT 3: Save theme to localStorage (preference local)
+  // EFFECT 3: Save theme to localStorage (only after initialization to prevent overwriting on mount)
   useEffect(() => {
-    localStorage.setItem('finTrackTheme', state.theme);
+    if (isInitialized.current) {
+      localStorage.setItem('finTrackTheme', state.theme);
+    }
   }, [state.theme]);
 
   return (

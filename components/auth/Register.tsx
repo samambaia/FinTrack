@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { supabase } from '../../lib/supabase';
+import React, { useState, useContext } from 'react';
+import { registerUser, saveCurrentUser } from '../../lib/authService';
+import { AppContext } from '../../context/AppContext';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/solid';
 
 interface RegisterProps {
@@ -7,6 +8,7 @@ interface RegisterProps {
 }
 
 const Register: React.FC<RegisterProps> = ({ onSwitchToLogin }) => {
+  const { dispatch } = useContext(AppContext);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -20,36 +22,36 @@ const Register: React.FC<RegisterProps> = ({ onSwitchToLogin }) => {
     setError('');
 
     if (password !== confirmPassword) {
-      setError("As senhas não coincidem!");
+      setError("Passwords don't match!");
       return;
     }
 
     if (password.length < 6) {
-      setError("A senha deve ter pelo menos 6 caracteres.");
+      setError("Password must be at least 6 characters.");
       return;
     }
 
     setLoading(true);
 
     try {
-      const { error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: `${window.location.origin}`,
-        },
-      });
+      const { user, error: registerError } = await registerUser(email, password);
 
-      if (signUpError) {
-        setError(signUpError.message || 'Erro ao criar conta.');
+      if (registerError || !user) {
+        setError(registerError || 'Failed to create account.');
       } else {
-        // Show success message
-        setError('');
-        alert('Conta criada com sucesso! Verifique seu e-mail para confirmar (se necessário).');
-        // Auth state change will be handled by AppContext
+        // Save user to localStorage
+        saveCurrentUser(user);
+        
+        // Update app context
+        dispatch({ 
+          type: 'LOGIN', 
+          payload: { id: user.id, email: user.email } 
+        });
+        
+        alert('Account created successfully!');
       }
     } catch (err) {
-      setError('Erro inesperado ao criar conta.');
+      setError('Unexpected error during registration.');
       console.error('Registration error:', err);
     } finally {
       setLoading(false);

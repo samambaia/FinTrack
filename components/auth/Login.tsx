@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { supabase } from '../../lib/supabase';
+import React, { useState, useContext } from 'react';
+import { loginUser, saveCurrentUser } from '../../lib/authService';
+import { AppContext } from '../../context/AppContext';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/solid';
 
 interface LoginProps {
@@ -7,6 +8,7 @@ interface LoginProps {
 }
 
 const Login: React.FC<LoginProps> = ({ onSwitchToRegister }) => {
+  const { dispatch } = useContext(AppContext);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -19,17 +21,22 @@ const Login: React.FC<LoginProps> = ({ onSwitchToRegister }) => {
     setLoading(true);
 
     try {
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const { user, error: loginError } = await loginUser(email, password);
 
-      if (signInError) {
-        setError(signInError.message || 'Erro ao fazer login. Verifique suas credenciais.');
+      if (loginError || !user) {
+        setError(loginError || 'Failed to login. Please check your credentials.');
+      } else {
+        // Save user to localStorage
+        saveCurrentUser(user);
+        
+        // Update app context
+        dispatch({ 
+          type: 'LOGIN', 
+          payload: { id: user.id, email: user.email } 
+        });
       }
-      // Auth state change will be handled by AppContext
     } catch (err) {
-      setError('Erro inesperado ao fazer login.');
+      setError('Unexpected error during login.');
       console.error('Login error:', err);
     } finally {
       setLoading(false);
