@@ -4,13 +4,15 @@ import AccountCard from './AccountCard';
 import TransactionList from './TransactionList';
 import Modal from '../common/Modal';
 import AddTransactionForm from '../transactions/AddTransactionForm';
-import { PlusIcon } from '@heroicons/react/24/solid';
+import TransferForm from '../transactions/TransferForm';
+import { PlusIcon, ArrowsRightLeftIcon } from '@heroicons/react/24/solid';
 import { Transaction } from '../../types';
 import CreditCardSummary from './CreditCardSummary';
 
 const Dashboard: React.FC = () => {
   const { accounts, transactions } = useContext(AppContext);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
   const activeAccounts = useMemo(() => accounts.filter(acc => acc.active), [accounts]);
@@ -29,6 +31,14 @@ const Dashboard: React.FC = () => {
   const handleOpenAddModal = () => {
     setEditingTransaction(null);
     setIsModalOpen(true);
+  }
+
+  const handleOpenTransferModal = () => {
+    setIsTransferModalOpen(true);
+  }
+
+  const handleCloseTransferModal = () => {
+    setIsTransferModalOpen(false);
   }
 
   const handleOpenEditModal = (transaction: Transaction) => {
@@ -82,7 +92,15 @@ const Dashboard: React.FC = () => {
         <PlusIcon className="h-7 w-7" />
       </button>
       
-      <div className="hidden md:block fixed bottom-6 right-6">
+      <button
+        onClick={handleOpenTransferModal}
+        className="fixed bottom-36 right-4 md:hidden h-14 w-14 bg-sky-600 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-sky-700 transition-transform transform hover:scale-105"
+        aria-label="Transferir entre Contas"
+      >
+        <ArrowsRightLeftIcon className="h-7 w-7" />
+      </button>
+      
+      <div className="hidden md:flex md:flex-col md:gap-3 fixed bottom-6 right-6">
          <button
             onClick={handleOpenAddModal}
             className="bg-primary-600 text-white px-4 py-2 rounded-full flex items-center shadow-lg hover:bg-primary-700 transition-transform transform hover:scale-105"
@@ -90,10 +108,21 @@ const Dashboard: React.FC = () => {
             <PlusIcon className="h-5 w-5 mr-2" />
             Adicionar Transação
         </button>
+        <button
+            onClick={handleOpenTransferModal}
+            className="bg-sky-600 text-white px-4 py-2 rounded-full flex items-center shadow-lg hover:bg-sky-700 transition-transform transform hover:scale-105"
+            >
+            <ArrowsRightLeftIcon className="h-5 w-5 mr-2" />
+            Transferir entre Contas
+        </button>
       </div>
 
       <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingTransaction ? 'Editar Transação' : 'Adicionar Nova Transação'}>
         <AddTransactionForm onSuccess={handleCloseModal} transactionToEdit={editingTransaction} />
+      </Modal>
+
+      <Modal isOpen={isTransferModalOpen} onClose={handleCloseTransferModal} title="Transferir entre Contas">
+        <TransferForm onSuccess={handleCloseTransferModal} />
       </Modal>
     </div>
   );

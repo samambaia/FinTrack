@@ -404,6 +404,7 @@ export const initializeDefaultCategories = async (userId: string): Promise<void>
     { id: 'cat-income-1', name: 'Salário', type: 'income', isDefault: true },
     { id: 'cat-income-2', name: 'Freelance', type: 'income', isDefault: true },
     { id: 'cat-income-3', name: 'Investimentos', type: 'income', isDefault: true },
+    { id: 'cat-income-4', name: 'Transferência', type: 'income', isDefault: true },
     { id: 'cat-income-99', name: 'Outras Receitas', type: 'income', isDefault: true },
     { id: 'cat-expense-1', name: 'Moradia', type: 'expense', isDefault: true },
     { id: 'cat-expense-2', name: 'Alimentação', type: 'expense', isDefault: true },
@@ -412,6 +413,7 @@ export const initializeDefaultCategories = async (userId: string): Promise<void>
     { id: 'cat-expense-5', name: 'Saúde', type: 'expense', isDefault: true },
     { id: 'cat-expense-6', name: 'Educação', type: 'expense', isDefault: true },
     { id: 'cat-expense-7', name: 'Pagamento de Fatura', type: 'expense', isDefault: true },
+    { id: 'cat-expense-8', name: 'Transferência', type: 'expense', isDefault: true },
     { id: 'cat-expense-99', name: 'Outras Despesas', type: 'expense', isDefault: true },
   ];
 

@@ -18,7 +18,17 @@ const AddTransactionForm: React.FC<AddTransactionFormProps> = ({ onSuccess, tran
   const [category, setCategory] = useState('');
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  
+  // Get local date in YYYY-MM-DD format to avoid timezone issues
+  const getLocalDateString = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  
+  const [date, setDate] = useState(getLocalDateString());
 
   const resetForm = () => {
     setType('expense');
@@ -27,7 +37,7 @@ const AddTransactionForm: React.FC<AddTransactionFormProps> = ({ onSuccess, tran
     setCategory('');
     setDescription('');
     setAmount('');
-    setDate(new Date().toISOString().split('T')[0]);
+    setDate(getLocalDateString());
   }
 
   useEffect(() => {
@@ -38,7 +48,11 @@ const AddTransactionForm: React.FC<AddTransactionFormProps> = ({ onSuccess, tran
         setCategory(transactionToEdit.category);
         setDescription(transactionToEdit.description);
         setAmount(String(transactionToEdit.amount));
-        setDate(new Date(transactionToEdit.date).toISOString().split('T')[0]);
+        // Extract date directly if already in YYYY-MM-DD format, otherwise parse it
+        const dateValue = transactionToEdit.date.includes('T') 
+          ? transactionToEdit.date.split('T')[0] 
+          : transactionToEdit.date;
+        setDate(dateValue);
     } else {
         resetForm();
     }
@@ -52,7 +66,7 @@ const AddTransactionForm: React.FC<AddTransactionFormProps> = ({ onSuccess, tran
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const isCardTx = type === 'creditCardExpense';
-    if ((isCardTx && !creditCardId) || (!isCardTx && !accountId) || !description || !amount || !date) {
+    if ((isCardTx && !creditCardId) || (!isCardTx && !accountId) || !description || !amount || !date || !category) {
         alert("Por favor, preencha todos os campos obrigatórios.");
         return;
     }
@@ -61,7 +75,7 @@ const AddTransactionForm: React.FC<AddTransactionFormProps> = ({ onSuccess, tran
         id: transactionToEdit ? transactionToEdit.id : new Date().toISOString() + Math.random(),
         accountId: !isCardTx ? accountId : undefined,
         creditCardId: isCardTx ? creditCardId : undefined,
-        category: category || (type === 'income' ? 'Outras Receitas' : 'Outras Despesas'),
+        category: category,
         description,
         amount: parseFloat(amount),
         date,
@@ -126,11 +140,13 @@ const AddTransactionForm: React.FC<AddTransactionFormProps> = ({ onSuccess, tran
         <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm" />
       </div>
        <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Categoria</label>
-        <input list="categories" value={category} onChange={(e) => setCategory(e.target.value)} placeholder={type !== 'income' ? "Ex: Alimentação, Moradia" : "Ex: Salário, Freelance"} className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm" />
-        <datalist id="categories">
-            {filteredCategories.map(cat => <option key={cat.id} value={cat.name} />)}
-        </datalist>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Categoria *</label>
+        <select value={category} onChange={(e) => setCategory(e.target.value)} required className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md">
+          <option value="">Selecione uma categoria</option>
+          {filteredCategories.map(cat => (
+            <option key={cat.id} value={cat.name}>{cat.name}</option>
+          ))}
+        </select>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>

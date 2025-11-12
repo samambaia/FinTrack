@@ -27,7 +27,9 @@ const TransactionItem: React.FC<{
                     {isIncome ? '+ ' : '- '}
                     {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(transaction.amount)}
                 </p>
-                 <p className="text-sm text-gray-500 dark:text-gray-400">{new Date(transaction.date).toLocaleDateString()}</p>
+                 <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {transaction.date.split('T')[0].split('-').reverse().join('/')}
+                 </p>
             </div>
              <div className="flex items-center flex-shrink-0 ml-2">
                  <button onClick={() => onEdit(transaction)} className="mr-1 text-gray-400 hover:text-primary-500 transition-colors p-2">
@@ -65,7 +67,8 @@ const TransactionList: React.FC<TransactionListProps> = ({ onEditTransaction }) 
 
   const groupedTransactions = useMemo(() => {
     return enrichedTransactions.reduce((acc, tx) => {
-      const date = new Date(tx.date).toLocaleDateString('en-CA'); // YYYY-MM-DD
+      // Extract date directly without timezone conversion
+      const date = tx.date.split('T')[0]; // Gets YYYY-MM-DD
       if (!acc[date]) {
         acc[date] = [];
       }
@@ -90,7 +93,7 @@ const TransactionList: React.FC<TransactionListProps> = ({ onEditTransaction }) 
           {sortedDates.map(date => (
             <div key={date}>
               <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700 px-3 py-1.5 rounded-md">
-                {new Date(date).toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                {new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
               </h3>
               <ul className="divide-y divide-gray-200 dark:divide-gray-700 px-3">
                 {groupedTransactions[date].map(transaction => (

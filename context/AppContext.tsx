@@ -146,6 +146,8 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
       console.log('🚪 Logout detected, resetting auth state tracking');
       lastAuthState.current = false;
       isLoggingOut.current = false;
+      // Also reset initialized flag to force data reload on next login
+      isInitialized.current = false;
     }
   }, [state.auth.isAuthenticated]);
 

@@ -24,6 +24,7 @@ export type AppAction =
   | { type: 'UPDATE_CREDIT_CARD'; payload: CreditCard }
   | { type: 'DELETE_CREDIT_CARD'; payload: string } // id
   | { type: 'PAY_INVOICE', payload: { creditCardId: string, accountId: string, amount: number, date: string }}
+  | { type: 'TRANSFER_BETWEEN_ACCOUNTS', payload: { fromAccountId: string, toAccountId: string, amount: number, date: string, description: string }}
   | { type: 'ADD_TRANSACTION'; payload: Transaction }
   | { type: 'UPDATE_TRANSACTION'; payload: Transaction }
   | { type: 'DELETE_TRANSACTION'; payload: string } // id
@@ -40,6 +41,7 @@ export const initialState: AppState = {
     { id: 'cat-income-1', name: 'Salário', type: 'income', isDefault: true },
     { id: 'cat-income-2', name: 'Freelance', type: 'income', isDefault: true },
     { id: 'cat-income-3', name: 'Investimentos', type: 'income', isDefault: true },
+    { id: 'cat-income-4', name: 'Transferência', type: 'income', isDefault: true },
     { id: 'cat-income-99', name: 'Outras Receitas', type: 'income', isDefault: true },
     { id: 'cat-expense-1', name: 'Moradia', type: 'expense', isDefault: true },
     { id: 'cat-expense-2', name: 'Alimentação', type: 'expense', isDefault: true },
@@ -48,6 +50,7 @@ export const initialState: AppState = {
     { id: 'cat-expense-5', name: 'Saúde', type: 'expense', isDefault: true },
     { id: 'cat-expense-6', name: 'Educação', type: 'expense', isDefault: true },
     { id: 'cat-expense-7', name: 'Pagamento de Fatura', type: 'expense', isDefault: true },
+    { id: 'cat-expense-8', name: 'Transferência', type: 'expense', isDefault: true },
     { id: 'cat-expense-99', name: 'Outras Despesas', type: 'expense', isDefault: true },
   ],
   auth: {
@@ -139,6 +142,35 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         transactions: [paymentTransaction, ...updatedTransactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+      };
+    }
+    case 'TRANSFER_BETWEEN_ACCOUNTS': {
+      const { fromAccountId, toAccountId, amount, date, description } = action.payload;
+      
+      // Create two transactions: debit from source, credit to destination
+      const debitTransaction: Transaction = {
+        id: new Date().toISOString() + Math.random(),
+        accountId: fromAccountId,
+        type: 'expense',
+        amount: amount,
+        date,
+        description: description || `Transferência para conta`,
+        category: 'Transferência',
+      };
+
+      const creditTransaction: Transaction = {
+        id: new Date().toISOString() + Math.random() + '_credit',
+        accountId: toAccountId,
+        type: 'income',
+        amount: amount,
+        date,
+        description: description || `Transferência recebida`,
+        category: 'Transferência',
+      };
+
+      return {
+        ...state,
+        transactions: [debitTransaction, creditTransaction, ...state.transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
       };
     }
     case 'ADD_TRANSACTION':
