@@ -29,6 +29,7 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
   const isSyncing = useRef(false);
   const isLoggingOut = useRef(false);
   const lastAuthState = useRef<boolean>(false);
+  const isLoadingInitialData = useRef(false);
 
   // EFFECT 1: Check authentication and load data from Supabase on initial mount and after login
   useEffect(() => {
@@ -50,6 +51,7 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
           const userEmail = currentUser.email;
           
           console.log('📊 Loading data for user:', userId, userEmail);
+          isLoadingInitialData.current = true;
 
           try {
             // Load all data in parallel
@@ -89,9 +91,12 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
                 theme: themeToUse,
               };
               dispatch({ type: 'HYDRATE_STATE', payload: hydratedState });
+              // Allow sync after data is loaded
+              setTimeout(() => { isLoadingInitialData.current = false; }, 500);
             }
           } catch (error) {
             console.error('Error loading data from Supabase:', error);
+            isLoadingInitialData.current = false;
             // Still set auth state even if data loading fails
             dispatch({ 
               type: 'HYDRATE_STATE', 
@@ -100,6 +105,7 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
           }
         } else {
           // No session, start fresh but preserve theme
+          isLoadingInitialData.current = false;
           dispatch({ 
             type: 'HYDRATE_STATE', 
             payload: { ...initialState, theme: themeToUse } 
@@ -107,6 +113,7 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
         }
       } catch (error) {
         console.error("Critical error during app initialization:", error);
+        isLoadingInitialData.current = false;
         // Preserve theme even on critical error
         const savedTheme = localStorage.getItem('finTrackTheme') as Theme;
         const themeToUse = (savedTheme === 'light' || savedTheme === 'dark') ? savedTheme : (isInitialized.current ? state.theme : initialState.theme);
@@ -153,7 +160,7 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
 
   // EFFECT 2: Sync state changes to Supabase (only when authenticated and after initialization)
   useEffect(() => {
-    if (!isInitialized.current || !state.auth.isAuthenticated || !state.auth.user || isSyncing.current || isLoggingOut.current) {
+    if (!isInitialized.current || !state.auth.isAuthenticated || !state.auth.user || isSyncing.current || isLoggingOut.current || isLoadingInitialData.current) {
       return;
     }
 
