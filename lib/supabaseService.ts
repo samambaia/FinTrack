@@ -314,23 +314,31 @@ export const deleteTransaction = async (userId: string, transactionId: string): 
 
 // Categories
 export const fetchCategories = async (userId: string): Promise<Category[]> => {
+  console.log('🔍 Fetching categories for user:', userId);
+  
+  // Fetch both default categories (is_default = true) AND user-specific categories
   const { data, error } = await supabase
     .from('categories')
     .select('*')
-    .eq('user_id', userId)
+    .or(`user_id.eq.${userId},is_default.eq.true`)
     .order('name', { ascending: true });
 
   if (error) {
-    console.error('Error fetching categories:', error);
+    console.error('❌ Error fetching categories:', error);
     throw error;
   }
 
-  return (data || []).map(cat => ({
+  console.log('✅ Raw categories data from Supabase:', data);
+  
+  const mappedCategories = (data || []).map(cat => ({
     id: cat.id,
     name: cat.name,
     type: cat.type,
     isDefault: cat.is_default,
   }));
+  
+  console.log('✅ Mapped categories:', mappedCategories.length, 'total (default + user custom)');
+  return mappedCategories;
 };
 
 export const insertCategory = async (userId: string, category: Category): Promise<Category> => {
@@ -341,7 +349,7 @@ export const insertCategory = async (userId: string, category: Category): Promis
       user_id: userId,
       name: category.name,
       type: category.type,
-      is_default: category.isDefault || false,
+      is_default: false, // User-created categories are never default
     })
     .select()
     .single();
@@ -360,6 +368,12 @@ export const insertCategory = async (userId: string, category: Category): Promis
 };
 
 export const updateCategory = async (userId: string, category: Category): Promise<Category> => {
+  // Prevent updating default categories
+  if (category.isDefault) {
+    console.warn('⚠️ Cannot update default category:', category.name);
+    throw new Error('Default categories cannot be modified');
+  }
+  
   const { data, error } = await supabase
     .from('categories')
     .update({
@@ -386,6 +400,18 @@ export const updateCategory = async (userId: string, category: Category): Promis
 };
 
 export const deleteCategory = async (userId: string, categoryId: string): Promise<void> => {
+  // First check if it's a default category
+  const { data: category } = await supabase
+    .from('categories')
+    .select('is_default')
+    .eq('id', categoryId)
+    .single();
+  
+  if (category?.is_default) {
+    console.warn('⚠️ Cannot delete default category:', categoryId);
+    throw new Error('Default categories cannot be deleted');
+  }
+  
   const { error } = await supabase
     .from('categories')
     .delete()
@@ -398,8 +424,27 @@ export const deleteCategory = async (userId: string, categoryId: string): Promis
   }
 };
 
-// Initialize default categories for a user
+// Initialize default categories (system-wide, not per user)
 export const initializeDefaultCategories = async (userId: string): Promise<void> => {
+  // First check if default categories already exist globally
+  const { data: existingDefaults, error: checkError } = await supabase
+    .from('categories')
+    .select('id')
+    .eq('is_default', true)
+    .limit(1);
+
+  if (checkError) {
+    console.error('Error checking for default categories:', checkError);
+  }
+
+  // If default categories already exist globally, no need to create them again
+  if (existingDefaults && existingDefaults.length > 0) {
+    console.log('✅ Default categories already exist globally, skipping creation');
+    return;
+  }
+
+  console.log('🆕 Creating system-wide default categories...');
+  
   const defaultCategories = [
     { id: 'cat-income-1', name: 'Salário', type: 'income', isDefault: true },
     { id: 'cat-income-2', name: 'Freelance', type: 'income', isDefault: true },
@@ -417,19 +462,13 @@ export const initializeDefaultCategories = async (userId: string): Promise<void>
     { id: 'cat-expense-99', name: 'Outras Despesas', type: 'expense', isDefault: true },
   ];
 
-  // Check if user already has categories
-  const existingCategories = await fetchCategories(userId);
-  if (existingCategories.length > 0) {
-    return; // User already has categories
-  }
-
-  // Insert all default categories in a single batch operation
+  // Insert all default categories as system-wide (user_id = null)
   const categoriesToInsert = defaultCategories.map(cat => ({
     id: cat.id,
-    user_id: userId,
+    user_id: null, // System-wide categories have no specific user
     name: cat.name,
     type: cat.type,
-    is_default: cat.isDefault,
+    is_default: true,
   }));
 
   const { error } = await supabase
@@ -437,8 +476,15 @@ export const initializeDefaultCategories = async (userId: string): Promise<void>
     .insert(categoriesToInsert);
 
   if (error) {
-    console.error('Error inserting default categories:', error);
+    // If duplicate key error, that's okay - categories already exist
+    if (error.code === '23505') {
+      console.log('✅ Default categories already exist (duplicate key), skipping');
+      return;
+    }
+    console.error('❌ Error inserting default categories:', error);
     throw error;
   }
+  
+  console.log('✅ System-wide default categories created successfully');
 };
 

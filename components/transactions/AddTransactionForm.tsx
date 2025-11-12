@@ -60,7 +60,9 @@ const AddTransactionForm: React.FC<AddTransactionFormProps> = ({ onSuccess, tran
 
   const filteredCategories = useMemo(() => {
     const categoryType = type === 'income' ? 'income' : 'expense';
-    return categories.filter(c => c.type === categoryType);
+    const filtered = categories.filter(c => c.type === categoryType);
+    console.log('📋 Categories available:', categories.length, '| Type:', categoryType, '| Filtered:', filtered.length, filtered);
+    return filtered;
   }, [categories, type]);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -147,6 +149,11 @@ const AddTransactionForm: React.FC<AddTransactionFormProps> = ({ onSuccess, tran
             <option key={cat.id} value={cat.name}>{cat.name}</option>
           ))}
         </select>
+        {filteredCategories.length === 0 && (
+          <p className="text-sm text-danger-500 mt-1">
+            Nenhuma categoria disponível. Por favor, adicione categorias em Ajustes.
+          </p>
+        )}
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>

@@ -17,9 +17,19 @@ const CategoryList: React.FC<{
         <div className="divide-y divide-gray-200 dark:divide-gray-700">
             {categories.map(cat => (
                 <div key={cat.id} className="py-2 flex items-center justify-between">
-                    <p className="text-gray-800 dark:text-gray-200">{cat.name}</p>
+                    <div className="flex items-center">
+                        <p className="text-gray-800 dark:text-gray-200">{cat.name}</p>
+                        {cat.isDefault && (
+                            <span className="ml-2 text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-0.5 rounded">Padrão</span>
+                        )}
+                    </div>
                     <div className="flex items-center space-x-1">
-                        <button onClick={() => onEdit(cat)} className="p-2 text-gray-500 hover:text-primary-500 rounded-full">
+                        <button 
+                            onClick={() => onEdit(cat)} 
+                            disabled={cat.isDefault}
+                            title={cat.isDefault ? "Categorias padrão não podem ser editadas." : "Editar categoria"}
+                            className="p-2 text-gray-500 hover:text-primary-500 rounded-full disabled:text-gray-300 dark:disabled:text-gray-600 disabled:cursor-not-allowed"
+                        >
                             <PencilIcon className="h-4 w-4" />
                         </button>
                         <button 
@@ -59,6 +69,9 @@ const CategoryManager: React.FC = () => {
   };
 
   const handleEditCategory = (category: Category) => {
+    // Prevent editing default categories
+    if (category.isDefault) return;
+    
     setEditingCategory(category);
     setCategoryType(category.type);
     setIsModalOpen(true);

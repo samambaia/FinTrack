@@ -51,10 +51,12 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
           const userEmail = currentUser.email;
           
           console.log('📊 Loading data for user:', userId, userEmail);
+          console.log('🔍 User email for debugging:', userEmail);
           isLoadingInitialData.current = true;
 
           try {
             // Load all data in parallel
+            console.log('⏳ Fetching data from Supabase...');
             const [accounts, creditCards, transactions, categories] = await Promise.all([
               supabaseService.fetchAccounts(userId),
               supabaseService.fetchCreditCards(userId),
@@ -62,25 +64,83 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
               supabaseService.fetchCategories(userId),
             ]);
             
-            console.log('📦 Loaded accounts:', accounts.length);
-            console.log('💳 Loaded credit cards:', creditCards.length);
-            console.log('💰 Loaded transactions:', transactions.length);
-            console.log('🏷️ Loaded categories:', categories.length);
+            console.log('📦 Loaded accounts:', accounts.length, accounts);
+            console.log('💳 Loaded credit cards:', creditCards.length, creditCards);
+            console.log('💰 Loaded transactions:', transactions.length, transactions);
+            console.log('🏷️ Loaded categories:', categories.length, categories);
 
             // Initialize default categories if user has none
             if (categories.length === 0) {
-              await supabaseService.initializeDefaultCategories(userId);
-              const updatedCategories = await supabaseService.fetchCategories(userId);
-              
-              const hydratedState: AppState = {
-                accounts,
-                creditCards,
-                transactions: transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
-                categories: updatedCategories,
-                auth: { isAuthenticated: true, user: { id: userId, email: userEmail } },
-                theme: themeToUse,
-              };
-              dispatch({ type: 'HYDRATE_STATE', payload: hydratedState });
+              console.log('🆕 Initializing default categories for user:', userId);
+              try {
+                await supabaseService.initializeDefaultCategories(userId);
+                const updatedCategories = await supabaseService.fetchCategories(userId);
+                console.log('✅ Default categories created:', updatedCategories.length);
+                
+                const hydratedState: AppState = {
+                  accounts,
+                  creditCards,
+                  transactions: transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+                  categories: updatedCategories,
+                  auth: { isAuthenticated: true, user: { id: userId, email: userEmail } },
+                  theme: themeToUse,
+                };
+                console.log('🔄 Dispatching HYDRATE_STATE:', {
+                  accounts: accounts.length,
+                  cards: creditCards.length,
+                  transactions: transactions.length,
+                  categories: updatedCategories.length
+                });
+                dispatch({ type: 'HYDRATE_STATE', payload: hydratedState });
+                setTimeout(() => { 
+                  isLoadingInitialData.current = false;
+                  console.log('✅ Initial data load complete (with new categories)');
+                }, 500);
+              } catch (categoryError: any) {
+                console.error('Error initializing categories:', categoryError);
+                // If categories already exist (duplicate key error), fetch them
+                if (categoryError.code === '23505') {
+                  console.log('⚠️ Categories already exist, fetching existing ones...');
+                  const existingCategories = await supabaseService.fetchCategories(userId);
+                  console.log('✅ Fetched existing categories:', existingCategories.length);
+                  
+                  const hydratedState: AppState = {
+                    accounts,
+                    creditCards,
+                    transactions: transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+                    categories: existingCategories,
+                    auth: { isAuthenticated: true, user: { id: userId, email: userEmail } },
+                    theme: themeToUse,
+                  };
+                  console.log('🔄 Dispatching HYDRATE_STATE with existing categories:', {
+                    accounts: accounts.length,
+                    cards: creditCards.length,
+                    transactions: transactions.length,
+                    categories: existingCategories.length
+                  });
+                  dispatch({ type: 'HYDRATE_STATE', payload: hydratedState });
+                  setTimeout(() => { 
+                    isLoadingInitialData.current = false;
+                    console.log('✅ Initial data load complete (with existing categories)');
+                  }, 500);
+                } else {
+                  // For other errors, load data without categories
+                  console.warn('⚠️ Could not load categories, proceeding with data only');
+                  const hydratedState: AppState = {
+                    accounts,
+                    creditCards,
+                    transactions: transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+                    categories: initialState.categories, // Use default categories from initialState
+                    auth: { isAuthenticated: true, user: { id: userId, email: userEmail } },
+                    theme: themeToUse,
+                  };
+                  dispatch({ type: 'HYDRATE_STATE', payload: hydratedState });
+                  setTimeout(() => { 
+                    isLoadingInitialData.current = false;
+                    console.log('✅ Initial data load complete (fallback categories)');
+                  }, 500);
+                }
+              }
             } else {
               const hydratedState: AppState = {
                 accounts,
@@ -90,9 +150,18 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
                 auth: { isAuthenticated: true, user: { id: userId, email: userEmail } },
                 theme: themeToUse,
               };
+              console.log('🔄 Dispatching HYDRATE_STATE:', {
+                accounts: accounts.length,
+                cards: creditCards.length,
+                transactions: transactions.length,
+                categories: categories.length
+              });
               dispatch({ type: 'HYDRATE_STATE', payload: hydratedState });
               // Allow sync after data is loaded
-              setTimeout(() => { isLoadingInitialData.current = false; }, 500);
+              setTimeout(() => { 
+                isLoadingInitialData.current = false;
+                console.log('✅ Initial data load complete');
+              }, 500);
             }
           } catch (error) {
             console.error('Error loading data from Supabase:', error);
